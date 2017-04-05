@@ -1,0 +1,9 @@
+model.stats = function(model, newdata) {
+  preds=predict(model, newdata, type="prob")
+  auc=as.numeric(performance(prediction(preds[,2],newdata$GOOD), "auc")@y.values)
+  preds=predict(model, newdata)
+  conf.mat=table(preds, newdata$GOOD)
+  accuracy=sum(diag(conf.mat))/sum(conf.mat)
+  CV=myCV(model, k=5)
+  return(data.frame(auc, accuracy, CV))
+}

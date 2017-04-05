@@ -1,0 +1,15 @@
+# To cross-validate RandomForest objects only
+
+myCV=function(model, k=5) {
+  accuracy=c()
+  folds=createFolds(as.numeric(names(model$y)), k=k)
+  for (i in 1:k) {
+    test=get(as.character(model$call$data))[folds[[i]], ]
+    train=get(as.character(model$call$data))[stack(folds[-i])$values, ]
+    trainModel=update(model, data=train)
+    preds=predict(trainModel, newdata=test)
+    conf.mat=table(preds, test$GOOD)
+    accuracy[i]=sum(diag(conf.mat))/sum(conf.mat)
+  }
+  return(mean(accuracy))
+}

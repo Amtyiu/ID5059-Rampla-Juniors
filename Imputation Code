@@ -1,0 +1,78 @@
+# This code works on my system when I use the Version 1.0.136 RStuddio "Import Dataset" wizard on my Mac to import the the two datasets.
+# The main problem you may have using this is converting the original variable types to the required type.
+# Sorry, the code may be be very dense in places.
+library(mice)
+library(caTools)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(ROCR)
+library(caret)
+library(missForest)
+ALG_HOLDOUT_WITHOUT_OUTCOME <- read_csv("~/Downloads/ALG_HOLDOUT_WITHOUT_OUTCOME.csv")
+dataset_modelling <- read_csv("~/Downloads/dataset_modelling.csv")
+ALG_HOLDOUT_WITHOUT_OUTCOME$app_date=as.Date(ALG_HOLDOUT_WITHOUT_OUTCOME$app_date, "%d%b%Y")
+dataset_modelling$app_date=as.Date(dataset_modelling$app_date, "%d-%b-%y")
+ALG_HOLDOUT_WITHOUT_OUTCOME$GOOD=rep(NA)
+vars=intersect(names(dataset_modelling), names(ALG_HOLDOUT_WITHOUT_OUTCOME))
+main=rbind.data.frame(dataset_modelling[,vars], ALG_HOLDOUT_WITHOUT_OUTCOME[,vars])
+main$S_02 = ifelse(main$S_02<0,NA,main$S_02)
+main$time_emp[main$time_emp==99999]= NA
+# Replace NA with 0
+main$I_01[is.na(main$I_01)] = 0
+# Split app_date and set weekdays
+wday=as.factor(weekdays(main$app_date))
+date=data.frame(do.call("rbind", strsplit(as.character(main$app_date), "-", fixed = TRUE)))
+names(date)=c("Year","Month","Day")
+main=data.frame(date,wday,main)
+# First change nominal to factor
+main$GOOD=factor(ifelse(main$GOOD==".",NA,main$GOOD),labels=c("0","1")); main$CA_01=as.factor(main$CA_01)
+main$occ_code=as.factor(main$occ_code); main$res_indicator=as.factor(main$res_indicator)
+# Now change character to numeric
+for (i in 1:ncol(main)) {
+  if (class(main[,i]) == "character") {main[,i]=as.numeric(main[,i])}
+}
+# Create vector to identify sets of data
+id=c(rep("dm", times=9962), rep("hold", times=4981))
+main$id=id
+
+varsForImp=setdiff(names(main), c("app_id", "app_date", "id"))
+
+# IMPUTATION 3: mice
+Imp3.good.index=ifelse(main$GOOD=="1" & !is.na(main$GOOD),TRUE,FALSE)
+Imp3.good=data.frame(complete(mice(main[Imp3.good.index, varsForImp])), app_id=main$app_id[Imp3.good.index], id=main$id[Imp3.good.index])
+Imp3.bad.index=ifelse(main$GOOD=="0" & !is.na(main$GOOD),TRUE,FALSE)
+Imp3.bad=data.frame(complete(mice(main[Imp3.bad.index, varsForImp])),app_id=main$app_id[Imp3.bad.index], id=id[Imp3.bad.index])
+Imp3.na=data.frame(complete(mice(main[is.na(main$GOOD), varsForImp])),app_id=main$app_id[is.na(main$GOOD)],id=id[is.na(main$GOOD)])
+Imp3=rbind.data.frame(Imp3.good,Imp3.bad)
+Imp3.full=rbind.data.frame(Imp3.good,Imp3.bad,Imp3.na)
+
+# IMPUTATION 5: mice
+Imp5=data.frame(complete(mice(rbind(Imp3[,-c(5,27,28)],main[is.na(main$GOOD),-c(5,6,7,29)]))),id=c(Imp3$id[Imp3$app_id>0],main$id[is.na(main$GOOD)]),app_id=c(Imp3$app_id[Imp3$app_id>0],main$app_id[is.na(main$GOOD)]))
+Imp5.full=data.frame(Imp5, GOOD=Imp3.full$GOOD)
+
+# IMPUTATION 3: missForest
+# 1. Subset and impute observations with GOOD response
+Imp3.good.mf=missForest(xmis=main[Imp3.good.index,varsForImp], variablewise = T)
+# 2. Subset and impute observations with BAD response
+Imp3.bad.mf=missForest(xmis=main[Imp3.bad.index,varsForImp], variablewise = T)
+# 3. Subset and impute observations for NA response values
+Imp3.na.mf=missForest(xmis=main[is.na(main$GOOD),varsForImp], variablewise = T)
+# 4. Combine and create new dataset
+Imp3.mf=rbind(Imp3.good.mf[[1]],Imp3.bad.mf[[1]]) 
+Imp3.full.mf=data.frame(rbind(Imp3.mf[,-c(5)],Imp3.na.mf[[1]]),GOOD=factor(c(Imp3.mf$GOOD,rep(NA,9130)),labels=c("0","1")),id=c(id[main$app_id>0],id[main$app_id<0]), app_id=c(main$app_id[main$app_id>0],main$app_id[main$app_id<0]))
+
+# IMPUTATION 5: missForest
+# Steps 1 & 2 same as Imputaion 3
+# 3. Use combined GOOD & BAD observations which were imputed seperately, to impute NA observations -
+#    so that the NA response observations are imputed according to the two classifications - GOOD & BAD
+Imp5.mf=missForest(xmis=rbind(Imp3.mf[,-c(5)],main[is.na(main$GOOD),varsForImp[-c(5)]]), variablewise=T)
+# 4. Create new dataset
+Imp5.full.mf=data.frame(Imp5.mf[[1]], Imp3.full.mf[,27:28])
+# 5. Remove response values of app_id<0 (GOOD column retained by mistake ;))
+Imp5.full.mf$GOOD[Imp5.full.mf$app_id<0]=NA
+
+write.csv(Imp3.full, "Imp3.full.csv")
+write.csv(Imp5.full, "Imp5.full.csv")
+write.csv(Imp3.full.mf, "Imp3.full.mf.csv")
+write.csv(Imp5.full.mf, "Imp5.full.mf.csv")

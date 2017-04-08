@@ -69,8 +69,9 @@ Imp3.full.mf=data.frame(rbind(Imp3.mf[,-c(5)],Imp3.na.mf[[1]]),GOOD=factor(c(Imp
 Imp5.mf=missForest(xmis=rbind(Imp3.mf[,-c(5)],main[is.na(main$GOOD),varsForImp[-c(5)]]), variablewise=T)
 # 4. Create new dataset
 Imp5.full.mf=data.frame(Imp5.mf[[1]], Imp3.full.mf[,27:28])
-# 5. Remove response values of app_id<0 (GOOD column retained by mistake ;))
-Imp5.full.mf$GOOD[Imp5.full.mf$app_id<0]=NA
+# 5. Add back response column
+Imp5.full.mf$GOOD=Imp3.full.mf$GOOD
+
 
 write.csv(Imp3.full, "Imp3.full.csv")
 write.csv(Imp5.full, "Imp5.full.csv")

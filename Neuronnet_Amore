@@ -1,0 +1,66 @@
+library(AMORE) 
+
+#The training data is from the original data dataset_modelling. Add a new column "Bad" to the train data. If Good is 1 then Bad is 0. If Good is 0 then
+#Bad is 1. If Good is NA then Bad is 0 and Good is 0.
+
+
+data <- read.csv("Imp5.full.csv")
+dataset_modelling<-subset(data,!id=="hold")
+dataset_modelling$bad=rep(NA)
+dataset_modelling$bad[is.na(dataset_modelling$GOOD)]=0
+dataset_modelling$bad[dataset_modelling$GOOD==1]=0
+dataset_modelling$bad[dataset_modelling$GOOD==0]=1
+dataset_modelling$GOOD[is.na(dataset_modelling$GOOD)]=0
+ALG_HOLDOUT_WITHOUT_OUTCOME<-subset(data,id=="hold")
+ALG_HOLDOUT_WITHOUT_OUTCOME<-testdata[,-29]
+
+
+# Transform character to numeric
+
+
+for (i in 1:30) { 
+  
+  dataset_modelling[,i] <- as.numeric(as.vector(dataset_modelling)[,i]) 
+  
+} 
+#divid the traindata to two parts for train and test.
+
+ind<-sample(2,nrow(dataset_modelling),replace=TRUE,prob=c(0.7,0.3))
+train<- dataset_modelling [ind==1,]
+test<- dataset_modelling [ind==2,]
+
+#Build the net. n.neurons is the structure of the neuron net.
+#learning.rate.global is the study rate
+#error.criterium is the algorithm to messure error
+#Stao is the stardard to judge error
+#hidden.layer is the function to activate hidden layer.
+#output.layer is the function to activate output layer.
+#method is the training method
+
+net <- newff(n.neurons=c(30,36,18,2), learning.rate.global=1e-6, 
+             
+             momentum.global=0.5, 
+             
+             error.criterium="LMS", Stao=NA, hidden.layer="tansig",  
+             
+             output.layer="purelin", method="ADAPTgdwm") 
+
+#net is neuron net
+#  traindata[1:28] is input data of net,traindata[29:30] is output data of net.
+result <- train(net, traindata[1:28], traindata[29:30], error.criterium="LMS", 
+                
+                report=TRUE, show.step=100, n.shows=5 ) 
+
+
+# calculate the accuracy rate of the test data.
+y <- sim(result$net, test[1:28]) 
+y[which(y<0.5)] <- 0
+y[which(y>=0.5)] <- 1
+sum = 0
+for(i in 1:nrow(test)){
+  if(y[i,1]==test[i,29]&&y[i,2]==test[i,30]){
+    sum =sum+1
+  }
+}
+cat("success rate", sum/nrow(test), "n")
+
